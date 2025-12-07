@@ -1,65 +1,80 @@
+// server.js
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-
 const app = express();
-const server = http.createServer(app);
+const server = require('http').createServer(app);
+const { Server } = require('socket.io');
 const io = new Server(server);
 
-// 静的ファイル配置
+const PORT = process.env.PORT || 3000;
+
+// publicフォルダ配信
 app.use(express.static('public'));
 
+// プレイヤー情報保持
 const players = {};
+const colors = ['red','blue','green','orange','purple','pink','yellow'];
 
-io.on('connection', (socket) => {
-    console.log('user connected:', socket.id);
+// 初期座標とカラー生成
+function createNewPlayer(id, name) {
+    return {
+        id,
+        name,
+        x: Math.floor(Math.random() * 460) + 20, // 500-20-20
+        y: Math.floor(Math.random() * 460) + 20,
+        color: colors[Math.floor(Math.random() * colors.length)]
+    };
+}
 
-    // 名前設定
+// 移動速度
+const speed = 5;
+
+// クライアント接続
+io.on('connection', socket => {
+    console.log('New connection:', socket.id);
+
+    // 名前セット受信
     socket.on('setName', (name) => {
-        players[socket.id] = { 
-            x: 50, 
-            y: 50, 
-            color: '#' + Math.floor(Math.random()*16777215).toString(16),
-            name: name || '名無し'
-        };
+        const player = createNewPlayer(socket.id, name);
+        players[socket.id] = player;
 
-        // 接続済みプレイヤー情報送信
+        // 既存プレイヤーを新規クライアントに送信
         socket.emit('currentPlayers', players);
 
-        // 他プレイヤーに通知
-        socket.broadcast.emit('newPlayer', { id: socket.id, ...players[socket.id] });
+        // 新規プレイヤーを全体に通知
+        socket.broadcast.emit('newPlayer', player);
     });
 
     // 移動処理
     socket.on('move', (dir) => {
-        const player = players[socket.id];
-        if (!player) return;
+        const p = players[socket.id];
+        if (!p) return;
 
-        const speed = 8;
-        if (dir === 'left' && player.x > 10) player.x -= speed;
-        else if (dir === 'right' && player.x < 470) player.x += speed;
-        else if (dir === 'up' && player.y > 10) player.y -= speed;
-        else if (dir === 'down' && player.y < 470) player.y += speed;
+        if (dir === 'left') p.x -= speed;
+        else if (dir === 'right') p.x += speed;
+        else if (dir === 'up') p.y -= speed;
+        else if (dir === 'down') p.y += speed;
 
-        io.emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
+        // 壁で制限
+        p.x = Math.max(10, Math.min(470, p.x));
+        p.y = Math.max(10, Math.min(470, p.y));
+
+        io.emit('playerMoved', { id: socket.id, x: p.x, y: p.y });
     });
 
-    // チャット処理
+    // チャット受信
     socket.on('chatMessage', (msg) => {
-        if (!players[socket.id]) return;
-        io.emit('chatMessage', { name: players[socket.id].name, msg });
+        const p = players[socket.id];
+        if (!p) return;
+        io.emit('chatMessage', { name: p.name, msg });
     });
 
     // 切断処理
     socket.on('disconnect', () => {
-        console.log('user disconnected:', socket.id);
+        console.log('Disconnected:', socket.id);
         delete players[socket.id];
         io.emit('playerDisconnected', socket.id);
     });
 });
 
-// クラウド対応：ポート自動取得
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-});
+// サーバー起動
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

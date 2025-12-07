@@ -20,7 +20,7 @@ canvas { background: #ccc; display:block; margin: 0 auto; }
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket = io(); // 自動で同一ドメインに接続
+const socket = io();
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const players = {};
@@ -28,28 +28,39 @@ const players = {};
 let myName = prompt("名前を入力してください") || '名無し';
 socket.emit('setName', myName);
 
-const keysPressed = {}; // 押されているキー
+const keysPressed = {};
+let chatActive = false;
 
+const input = document.getElementById('input');
+const messages = document.getElementById('messages');
+
+// Enterキーでチャット開始／送信
 document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        if (!chatActive) {
+            input.focus();
+            chatActive = true;
+        } else if (input.value) {
+            socket.emit('chatMessage', input.value);
+            input.value = '';
+            input.blur();
+            chatActive = false;
+        }
+        e.preventDefault();
+        return;
+    }
+
+    // 矢印キー押下で移動（チャット中でも可）
     if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
         keysPressed[e.key] = true;
         e.preventDefault();
     }
 });
+
 document.addEventListener('keyup', (e) => {
     if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
         keysPressed[e.key] = false;
         e.preventDefault();
-    }
-});
-
-// チャット送信
-const input = document.getElementById('input');
-const messages = document.getElementById('messages');
-input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && input.value) {
-        socket.emit('chatMessage', input.value);
-        input.value = '';
     }
 });
 
@@ -61,13 +72,13 @@ socket.on('chatMessage', ({ name, msg }) => {
     messages.scrollTop = messages.scrollHeight;
 });
 
-// プレイヤー情報同期
+// プレイヤー同期
 socket.on('currentPlayers', (data) => Object.assign(players, data));
 socket.on('newPlayer', (data) => players[data.id] = { x: data.x, y: data.y, color: data.color, name: data.name });
 socket.on('playerMoved', (data) => { if(players[data.id]) { players[data.id].x = data.x; players[data.id].y = data.y; } });
 socket.on('playerDisconnected', (id) => delete players[id]);
 
-// 押しっぱなしで滑らか移動
+// 移動処理
 function handleMovement() {
     if (!players[socket.id]) return;
 
@@ -80,33 +91,45 @@ function handleMovement() {
     if (dir) socket.emit('move', dir);
 }
 
+// 名前縁取り描画
+function drawTextWithStroke(text, x, y, color = '#000', strokeColor = '#fff') {
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = strokeColor;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.font = '12px sans-serif';
+    ctx.strokeText(text, x, y);
+    ctx.fillText(text, x, y);
+}
+
 // 描画ループ
 function draw() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // 壁表示
+    // 壁
     ctx.fillStyle = '#444';
-    ctx.fillRect(0,0,500,10); // 上
-    ctx.fillRect(0,490,500,10); // 下
-    ctx.fillRect(0,0,10,500); // 左
-    ctx.fillRect(490,0,10,500); // 右
+    ctx.fillRect(0,0,500,10);      // 上
+    ctx.fillRect(0,490,500,10);    // 下
+    ctx.fillRect(0,0,10,500);      // 左
+    ctx.fillRect(490,0,10,500);    // 右
 
     // プレイヤー描画
     for (const id in players) {
         const p = players[id];
         ctx.fillStyle = p.color;
         ctx.fillRect(p.x, p.y, 20, 20);
+    }
 
-        // 名前表示（キャラ下中央）
-        ctx.fillStyle = '#000';
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(p.name, p.x + 10, p.y + 30);
+    // 名前描画
+    for (const id in players) {
+        const p = players[id];
+        drawTextWithStroke(p.name, p.x + 10, p.y + 30);
     }
 
     handleMovement();
     requestAnimationFrame(draw);
 }
+
 draw();
 </script>
 </body>
