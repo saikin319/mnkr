@@ -20,7 +20,7 @@ canvas { background: #ccc; display:block; margin: 0 auto; }
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket = io();
+const socket = io(); // 自動で同一ドメインに接続
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const players = {};
@@ -28,9 +28,8 @@ const players = {};
 let myName = prompt("名前を入力してください") || '名無し';
 socket.emit('setName', myName);
 
-const keysPressed = {}; // 押されているキーを記録
+const keysPressed = {}; // 押されているキー
 
-// キー押下管理
 document.addEventListener('keydown', (e) => {
     if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
         keysPressed[e.key] = true;
@@ -68,7 +67,7 @@ socket.on('newPlayer', (data) => players[data.id] = { x: data.x, y: data.y, colo
 socket.on('playerMoved', (data) => { if(players[data.id]) { players[data.id].x = data.x; players[data.id].y = data.y; } });
 socket.on('playerDisconnected', (id) => delete players[id]);
 
-// 移動処理（毎フレーム送信）
+// 押しっぱなしで滑らか移動
 function handleMovement() {
     if (!players[socket.id]) return;
 
@@ -97,6 +96,7 @@ function draw() {
         const p = players[id];
         ctx.fillStyle = p.color;
         ctx.fillRect(p.x, p.y, 20, 20);
+
         // 名前表示（キャラ下中央）
         ctx.fillStyle = '#000';
         ctx.font = '12px sans-serif';
